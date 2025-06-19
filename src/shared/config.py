@@ -65,10 +65,12 @@ class TelegramSettings(BaseSettings):
     """Telegram API configuration settings."""
     
     api_id: str = Field(
+        default="",
         env="TELEGRAM_API_ID",
         description="Telegram API ID for user client"
     )
     api_hash: str = Field(
+        default="",
         env="TELEGRAM_API_HASH",
         description="Telegram API hash for user client"
     )
@@ -78,10 +80,12 @@ class TelegramSettings(BaseSettings):
         description="Telegram session file path"
     )
     bot_token: str = Field(
+        default="",
         env="TELEGRAM_BOT_TOKEN",
         description="Telegram bot token for bot client"
     )
     bot_username: str = Field(
+        default="",
         env="TELEGRAM_BOT_USERNAME",
         description="Telegram bot username"
     )
@@ -172,14 +176,17 @@ class SecuritySettings(BaseSettings):
     """Security and encryption configuration settings."""
     
     secret_key: str = Field(
+        default="dev-secret-key",
         env="SECRET_KEY",
         description="Application secret key"
     )
     jwt_secret_key: str = Field(
+        default="dev-jwt-secret",
         env="JWT_SECRET_KEY",
         description="JWT token secret key"
     )
     encryption_key: str = Field(
+        default="dev-encryption-key",
         env="ENCRYPTION_KEY",
         description="Data encryption key"
     )
@@ -252,42 +259,24 @@ class ApplicationSettings(BaseSettings):
 class Settings(BaseSettings):
     """Main settings class that aggregates all configuration sections."""
     
-    database: DatabaseSettings = DatabaseSettings()
-    rabbitmq: RabbitMQSettings = RabbitMQSettings()
-    telegram: TelegramSettings = TelegramSettings()
-    llm: LLMSettings = LLMSettings()
-    gcs: GCSSettings = GCSSettings()
-    service_urls: ServiceURLs = ServiceURLs()
-    security: SecuritySettings = SecuritySettings()
-    alerts: AlertSettings = AlertSettings()
-    monitoring: MonitoringSettings = MonitoringSettings()
-    app: ApplicationSettings = ApplicationSettings()
+    database: DatabaseSettings = Field(default_factory=DatabaseSettings)
+    rabbitmq: RabbitMQSettings = Field(default_factory=RabbitMQSettings)
+    telegram: TelegramSettings = Field(default_factory=TelegramSettings)
+    llm: LLMSettings = Field(default_factory=LLMSettings)
+    gcs: GCSSettings = Field(default_factory=GCSSettings)
+    service_urls: ServiceURLs = Field(default_factory=ServiceURLs)
+    security: SecuritySettings = Field(default_factory=SecuritySettings)
+    alerts: AlertSettings = Field(default_factory=AlertSettings)
+    monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
+    app: ApplicationSettings = Field(default_factory=ApplicationSettings)
 
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
 
 
-from .logging import get_logger # Import the logger
-
 # Global settings instance
-logger = get_logger(__name__) # Initialize logger for this module
-
-# Attempt to load settings and log the outcome
-try:
-    logger.info("Loading application settings...")
-    settings = Settings()
-    # Log a selection of critical or environment-specific settings
-    logger.info(
-        "Application settings loaded successfully.",
-        environment=settings.app.environment,
-        debug_mode=settings.app.debug,
-        log_level=settings.monitoring.log_level,
-        db_url_preview=settings.database.url[:settings.database.url.find('@')] if '@' in settings.database.url else settings.database.url, # Avoid logging credentials
-        rabbitmq_url_preview=settings.rabbitmq.url[:settings.rabbitmq.url.find('@')] if '@' in settings.rabbitmq.url else settings.rabbitmq.url,
-    )
-except Exception as e:
-    logger.error("Failed to load application settings.", error=str(e), exc_info=True)
+_settings: Optional[Settings] = None
     # Depending on the application's desired behavior, might re-raise or exit
     raise
 

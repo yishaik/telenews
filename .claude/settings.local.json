@@ -5,7 +5,8 @@
       "Bash(pip3 install:*)",
       "Bash(ls:*)",
       "Bash(source:*)",
-      "Bash(./venv/Scripts/python.exe --version)"
+      "Bash(./venv/Scripts/python.exe --version)",
+      "Bash(./venv/Scripts/python.exe -m pip install:*)"
     ],
     "deny": []
   }
