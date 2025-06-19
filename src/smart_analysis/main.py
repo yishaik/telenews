@@ -96,7 +96,7 @@ class SmartAnalysisService:
             config = uvicorn.Config(
                 app=self.mcp_server.get_app(),
                 host="0.0.0.0",
-                port=self.settings.service_urls.smart_analysis_url.split(':')[-1] or 8003,
+                port=int(self.settings.service_urls.smart_analysis_url.split(':')[-1]) if ':' in self.settings.service_urls.smart_analysis_url else 8003,
                 log_config=None  # Use our logging configuration
             )
             

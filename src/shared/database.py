@@ -72,6 +72,16 @@ def get_sync_db() -> Session:
         db.close()
 
 
+def get_db_session() -> Session:
+    """
+    Get a synchronous database session for direct use.
+    
+    Returns:
+        Session: SQLAlchemy database session (must be closed manually)
+    """
+    return SyncSessionLocal()
+
+
 @asynccontextmanager
 async def get_async_db() -> AsyncGenerator[AsyncSession, None]:
     """

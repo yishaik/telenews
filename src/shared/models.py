@@ -189,6 +189,7 @@ class User(Base):
         comment="Telegram user ID"
     )
     first_name = Column(String(255), nullable=True, comment="User's first name")
+    last_name = Column(String(255), nullable=True, comment="User's last name")
     username = Column(String(255), nullable=True, comment="User's username")
     created_at = Column(
         DateTime(timezone=True),
@@ -201,7 +202,8 @@ class User(Base):
     alert_configs = relationship("AlertConfig", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
-        return f"<User(id={self.telegram_user_id}, username='{self.username}', name='{self.first_name}')>"
+        full_name = f"{self.first_name or ''} {self.last_name or ''}".strip()
+        return f"<User(id={self.telegram_user_id}, username='{self.username}', name='{full_name}')>"
 
 
 class AlertConfig(Base):

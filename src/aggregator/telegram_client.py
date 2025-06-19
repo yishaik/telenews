@@ -8,6 +8,7 @@ Connects as a user to monitor channels and process incoming messages.
 import asyncio
 import hashlib
 import time
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from telethon import TelegramClient, events
@@ -22,7 +23,7 @@ from telethon.tl.types import (
 )
 
 from shared.config import get_settings
-from shared.database import get_sync_db
+from shared.database import get_db_session
 from shared.logging import LoggingMixin, get_logger
 from shared.messaging import MessageProducer, create_new_message_event
 from shared.models import Channel as ChannelModel, Media, Message as MessageModel
@@ -127,7 +128,7 @@ class TelegramAggregator(LoggingMixin):
         """
         Register monitored channels in the database.
         """
-        db = next(get_sync_db())
+        db = get_db_session()
         
         try:
             for channel_identifier in self.monitored_channels:
@@ -318,7 +319,7 @@ class TelegramAggregator(LoggingMixin):
             message_data: Message information
             media_hash: SHA256 hash of media if present
         """
-        db = next(get_sync_db())
+        db = get_db_session()
         
         try:
             # Get media ID if media exists
@@ -397,5 +398,4 @@ class TelegramAggregator(LoggingMixin):
         await self.stop_aggregation()
 
 
-# Import datetime here to avoid circular imports
-from datetime import datetime, timezone 
+# Datetime imports moved to top of file 
