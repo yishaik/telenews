@@ -23,8 +23,8 @@ from telethon.tl.types import (
 )
 
 from shared.config import get_settings
-from shared.database import get_db_session
-from shared.logging import LoggingMixin, get_logger
+from shared.database import get_sync_db
+from shared.logging import LoggingMixin, get_logger, log_database_operation, log_message_processing
 from shared.messaging import MessageProducer, create_new_message_event
 from shared.models import Channel as ChannelModel, Media, Message as MessageModel
 
