@@ -120,24 +120,30 @@ alembic downgrade -1
 
 ### Running Services
 
-**Aggregator Service:**
-```bash
-python -m src.aggregator.main
+**Using Service Runner Scripts (Recommended):**
+
+Windows:
+```cmd
+run_service.bat aggregator        # Telegram message aggregator
+run_service.bat ai-analysis       # AI analysis service
+run_service.bat smart-analysis    # Smart analysis MCP server
+run_service.bat alerting          # Telegram bot service
 ```
 
-**AI Analysis Service:**
+Linux/macOS:
 ```bash
-python -m src.ai_analysis.main
+./run_service.sh aggregator       # Telegram message aggregator
+./run_service.sh ai-analysis      # AI analysis service
+./run_service.sh smart-analysis   # Smart analysis MCP server
+./run_service.sh alerting         # Telegram bot service
 ```
 
-**Smart Analysis Service:**
+**Alternative - Using Python directly:**
 ```bash
-python -m src.smart_analysis.main
-```
-
-**Alerting Service:**
-```bash
-python -m src.alerting.main
+python run_service.py aggregator
+python run_service.py ai-analysis
+python run_service.py smart-analysis
+python run_service.py alerting
 ```
 
 ### Testing

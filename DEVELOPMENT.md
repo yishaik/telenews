@@ -89,7 +89,11 @@ The Tel-Insights system consists of multiple microservices. Start them in separa
 
 ### Terminal 1: Aggregator Service
 ```bash
-python -m src.aggregator.main
+# Windows
+run_service.bat aggregator
+
+# Linux/macOS  
+./run_service.sh aggregator
 ```
 - Connects to Telegram
 - Monitors specified channels
@@ -98,7 +102,11 @@ python -m src.aggregator.main
 
 ### Terminal 2: AI Analysis Service
 ```bash
-python -m src.ai_analysis.main
+# Windows
+run_service.bat ai-analysis
+
+# Linux/macOS
+./run_service.sh ai-analysis
 ```
 - Consumes messages from queue
 - Processes with Google Gemini
@@ -106,22 +114,37 @@ python -m src.ai_analysis.main
 
 ### Terminal 3: Smart Analysis Service (MCP Server)
 ```bash
-python -m src.smart_analysis.main
+# Windows
+run_service.bat smart-analysis
+
+# Linux/macOS
+./run_service.sh smart-analysis
 ```
 - Runs MCP server on `http://localhost:8003`
 - Provides news summarization tools
 - Implements frequency-based alerts
 - Periodic alert checking
 
-### Terminal 4: Monitor Services
+### Terminal 4: Alerting Service (Optional)
+```bash
+# Windows
+run_service.bat alerting
+
+# Linux/macOS
+./run_service.sh alerting
+```
+- Telegram bot for user interaction
+- Alert delivery and configuration
+- User command handling
+
+### Terminal 5: Monitor Services
 ```bash
 # Check service health
 curl http://localhost:8003/health
 
-# View logs
-tail -f logs/aggregator.log
-tail -f logs/ai_analysis.log
-tail -f logs/smart_analysis.log
+# Check running processes
+tasklist | findstr python  # Windows
+ps aux | grep python       # Linux/macOS
 ```
 
 ## 🧪 Testing the System
