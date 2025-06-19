@@ -268,10 +268,33 @@ class Settings(BaseSettings):
         env_file_encoding = "utf-8"
 
 
+from .logging import get_logger # Import the logger
+
 # Global settings instance
-settings = Settings()
+logger = get_logger(__name__) # Initialize logger for this module
+
+# Attempt to load settings and log the outcome
+try:
+    logger.info("Loading application settings...")
+    settings = Settings()
+    # Log a selection of critical or environment-specific settings
+    logger.info(
+        "Application settings loaded successfully.",
+        environment=settings.app.environment,
+        debug_mode=settings.app.debug,
+        log_level=settings.monitoring.log_level,
+        db_url_preview=settings.database.url[:settings.database.url.find('@')] if '@' in settings.database.url else settings.database.url, # Avoid logging credentials
+        rabbitmq_url_preview=settings.rabbitmq.url[:settings.rabbitmq.url.find('@')] if '@' in settings.rabbitmq.url else settings.rabbitmq.url,
+    )
+except Exception as e:
+    logger.error("Failed to load application settings.", error=str(e), exc_info=True)
+    # Depending on the application's desired behavior, might re-raise or exit
+    raise
 
 
 def get_settings() -> Settings:
     """Get the global settings instance."""
+    # Settings are already loaded and logged at module scope.
+    # Could add a debug log here if frequent calls to get_settings() need to be tracked.
+    logger.debug("get_settings() called, returning pre-loaded settings instance.")
     return settings 

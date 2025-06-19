@@ -56,35 +56,48 @@ class MessageProducer:
             # Declare queues
             self._declare_queues()
             
-            logger.info("MessageProducer connected to RabbitMQ")
+            logger.info(
+                "MessageProducer connected to RabbitMQ and setup complete.",
+                target_url=settings.rabbitmq.url[:settings.rabbitmq.url.find('@')] if '@' in settings.rabbitmq.url else settings.rabbitmq.url,
+                exchange=settings.rabbitmq.exchange
+            )
             
         except AMQPConnectionError as e:
-            logger.error(f"Failed to connect to RabbitMQ: {e}")
+            logger.error("Failed to connect to RabbitMQ for MessageProducer.", error=str(e), exc_info=True)
             raise MessageQueueError(f"RabbitMQ connection failed: {e}")
+        except Exception as e: # Catch any other unexpected errors during setup
+            logger.error("Unexpected error during MessageProducer setup.", error=str(e), exc_info=True)
+            raise MessageQueueError(f"Unexpected error during MessageProducer setup: {e}")
+
     
     def _declare_queues(self) -> None:
         """Declare all required queues."""
-        queues = [
-            settings.rabbitmq.queue_new_message,
-            settings.rabbitmq.queue_dead_letter,
-        ]
+        queues_to_declare = { # Using a dict for more context in logging
+            "new_message": settings.rabbitmq.queue_new_message,
+            "dead_letter": settings.rabbitmq.queue_dead_letter,
+        }
         
-        for queue_name in queues:
+        logger.debug("Declaring RabbitMQ queues...")
+        for queue_key, queue_name in queues_to_declare.items():
+            logger.debug(f"Declaring queue '{queue_name}' (for {queue_key}).")
             self.channel.queue_declare(
                 queue=queue_name,
                 durable=True,
                 arguments={
-                    'x-dead-letter-exchange': settings.rabbitmq.exchange,
-                    'x-dead-letter-routing-key': settings.rabbitmq.queue_dead_letter,
+                    'x-dead-letter-exchange': settings.rabbitmq.exchange, # DLX for all queues
+                    'x-dead-letter-routing-key': settings.rabbitmq.queue_dead_letter, # Default DLQ routing key
                 }
             )
             
-            # Bind queue to exchange
+            # Bind queue to exchange - routing key is typically the queue name itself for this setup
+            routing_key_for_bind = queue_name
+            logger.debug(f"Binding queue '{queue_name}' to exchange '{settings.rabbitmq.exchange}' with routing key '{routing_key_for_bind}'.")
             self.channel.queue_bind(
                 exchange=settings.rabbitmq.exchange,
                 queue=queue_name,
-                routing_key=queue_name
+                routing_key=routing_key_for_bind # Often same as queue name for direct-to-queue via topic
             )
+        logger.info("MessageProducer queues declared and bound.")
     
     def publish_message(
         self,
@@ -130,21 +143,41 @@ class MessageProducer:
             )
             
             logger.info(
-                "Message published",
+                "Message published successfully.",
                 exchange=exchange_name,
                 routing_key=routing_key,
-                message_id=message.get('message_id', 'unknown')
+                message_id=message.get('message_id', 'unknown'), # Assuming message has an ID
+                message_event_type=message.get('event_type', 'N/A'),
+                message_size=len(message_body)
             )
             
             return True
             
         except (AMQPConnectionError, AMQPChannelError) as e:
-            logger.error(f"Failed to publish message: {e}")
-            # Try to reconnect
-            self._setup_connection()
+            logger.error(
+                "RabbitMQ connection/channel error while publishing message. Attempting to reconnect.",
+                error=str(e),
+                exchange=exchange_name,
+                routing_key=routing_key,
+                exc_info=True
+            )
+            # Try to reconnect - this might be risky if in a loop
+            try:
+                self._setup_connection()
+                logger.info("Reconnected to RabbitMQ successfully after publish error.")
+            except Exception as conn_err:
+                logger.error("Failed to reconnect to RabbitMQ after publish error.", reconn_error=str(conn_err))
+                raise MessageQueueError(f"Failed to publish message due to AMQP error and failed to reconnect: {e}") from conn_err
+            # It might be better to raise and let the caller handle retry logic for publishing
             raise MessageQueueError(f"Failed to publish message: {e}")
         except Exception as e:
-            logger.error(f"Unexpected error publishing message: {e}")
+            logger.error(
+                "Unexpected error publishing message.",
+                error=str(e),
+                exchange=exchange_name,
+                routing_key=routing_key,
+                exc_info=True
+            )
             raise MessageQueueError(f"Unexpected error: {e}")
     
     def publish_new_message_event(self, message_data: Dict[str, Any]) -> bool:
@@ -218,12 +251,21 @@ class MessageConsumer:
             
             # Set QoS to process one message at a time
             self.channel.basic_qos(prefetch_count=1)
+            logger.debug(f"QoS prefetch_count=1 set for consumer on queue '{self.queue_name}'.")
             
-            logger.info(f"MessageConsumer connected to queue: {self.queue_name}")
+            logger.info(
+                f"MessageConsumer connected to RabbitMQ and setup complete for queue: {self.queue_name}",
+                target_url=settings.rabbitmq.url[:settings.rabbitmq.url.find('@')] if '@' in settings.rabbitmq.url else settings.rabbitmq.url,
+                exchange=settings.rabbitmq.exchange
+            )
             
         except AMQPConnectionError as e:
-            logger.error(f"Failed to connect to RabbitMQ: {e}")
+            logger.error(f"Failed to connect to RabbitMQ for MessageConsumer on queue '{self.queue_name}'.", error=str(e), exc_info=True)
             raise MessageQueueError(f"RabbitMQ connection failed: {e}")
+        except Exception as e: # Catch any other unexpected errors during setup
+            logger.error(f"Unexpected error during MessageConsumer setup for queue '{self.queue_name}'.", error=str(e), exc_info=True)
+            raise MessageQueueError(f"Unexpected error during MessageConsumer setup: {e}")
+
     
     def _message_handler(self, channel: BlockingChannel, method, properties, body: bytes) -> None:
         """
@@ -237,13 +279,17 @@ class MessageConsumer:
         """
         try:
             # Parse JSON message
-            message = json.loads(body.decode('utf-8'))
+            message_body_str = body.decode('utf-8') # For logging preview
+            message = json.loads(message_body_str)
             
-            logger.info(
-                "Message received",
+            self.logger.debug( # Changed to debug as it can be very verbose
+                "Message received by consumer.",
                 queue=self.queue_name,
                 message_id=message.get('message_id', 'unknown'),
-                event_type=message.get('event_type', 'unknown')
+                event_type=message.get('event_type', 'unknown'),
+                message_size=len(body),
+                delivery_tag=method.delivery_tag,
+                # message_preview=message_body_str[:100] # Optional: log preview, be careful with sensitive data
             )
             
             # Process message with callback
@@ -251,31 +297,48 @@ class MessageConsumer:
             
             if success:
                 # Acknowledge message
+                logger.debug(f"Acknowledging message (basic_ack) with delivery_tag: {method.delivery_tag}", queue=self.queue_name)
                 channel.basic_ack(delivery_tag=method.delivery_tag)
-                logger.info(
-                    "Message processed successfully",
+                logger.info( # Keep info for successful processing confirmation
+                    "Message processed successfully and acknowledged.",
                     queue=self.queue_name,
-                    message_id=message.get('message_id', 'unknown')
+                    message_id=message.get('message_id', 'unknown'),
+                    event_type=message.get('event_type', 'unknown')
                 )
             else:
-                # Reject message and send to dead letter queue
+                # Reject message and send to dead letter queue (if configured)
+                logger.warning(
+                    "Message processing failed by callback. Rejecting message (basic_nack).",
+                    queue=self.queue_name,
+                    message_id=message.get('message_id', 'unknown'),
+                    event_type=message.get('event_type', 'unknown'),
+                    delivery_tag=method.delivery_tag
+                )
                 channel.basic_nack(
                     delivery_tag=method.delivery_tag,
-                    requeue=False
-                )
-                logger.warning(
-                    "Message processing failed, sent to dead letter queue",
-                    queue=self.queue_name,
-                    message_id=message.get('message_id', 'unknown')
+                    requeue=False # False means send to DLQ if DLX is configured
                 )
         
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse message JSON: {e}")
-            channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+            logger.error(
+                "Failed to parse message JSON in consumer.",
+                queue=self.queue_name,
+                error=str(e),
+                raw_body_preview=body.decode('utf-8', errors='ignore')[:200], # Log preview of unparseable body
+                delivery_tag=method.delivery_tag if method else None,
+                exc_info=True
+            )
+            if method: channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
         
         except Exception as e:
-            logger.error(f"Error processing message: {e}")
-            channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+            logger.error(
+                "Unexpected error processing message in consumer.",
+                queue=self.queue_name,
+                error=str(e),
+                delivery_tag=method.delivery_tag if method else None,
+                exc_info=True
+            )
+            if method: channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False) # Ensure nack on unexpected error
     
     def start_consuming(self) -> None:
         """
@@ -298,25 +361,42 @@ class MessageConsumer:
             self.channel.start_consuming()
             
         except KeyboardInterrupt:
-            logger.info("Consumer interrupted by user")
-            self.stop_consuming()
+            logger.info(f"Consumer for queue '{self.queue_name}' interrupted by user (KeyboardInterrupt).")
+            self.stop_consuming() # Attempt graceful stop
         
         except Exception as e:
-            logger.error(f"Error in consumer: {e}")
+            logger.error(f"Critical error in consumer for queue '{self.queue_name}'.", error=str(e), exc_info=True)
+            # Depending on the design, may want to attempt reconnection here or let a supervisor handle it.
             raise MessageQueueError(f"Consumer error: {e}")
+        finally:
+            logger.info(f"Consumer loop for queue '{self.queue_name}' exited.")
+            # Close is typically called by the code that created the consumer instance
+            # self.close() might be too aggressive here if start_consuming is meant to be restartable
     
     def stop_consuming(self) -> None:
         """Stop consuming messages."""
-        if self.channel:
-            self.channel.stop_consuming()
-            logger.info("Stopped consuming messages")
+        if self.channel and self.channel.is_consuming: # Check if it's actually consuming
+            logger.info(f"Stopping message consumption for queue '{self.queue_name}'...")
+            try:
+                self.channel.stop_consuming()
+                logger.info(f"Message consumption stopped for queue '{self.queue_name}'.")
+            except Exception as e: # stop_consuming can sometimes raise errors if connection is already closing
+                logger.warning(f"Error while trying to stop consuming on queue '{self.queue_name}'.", error=str(e), exc_info=True)
+        else:
+            logger.info(f"Consumer for queue '{self.queue_name}' was not actively consuming or channel closed.")
     
     def close(self) -> None:
         """Close the connection to RabbitMQ."""
-        self.stop_consuming()
-        if self.connection and not self.connection.is_closed:
-            self.connection.close()
-            logger.info("MessageConsumer connection closed")
+        logger.info(f"Attempting to close MessageConsumer connection for queue '{self.queue_name}'.")
+        try:
+            self.stop_consuming() # Ensure consuming is stopped first
+            if self.connection and not self.connection.is_closed:
+                self.connection.close()
+                logger.info(f"MessageConsumer connection for queue '{self.queue_name}' closed successfully.")
+            else:
+                logger.info(f"MessageConsumer connection for queue '{self.queue_name}' was already closed or not established.")
+        except Exception as e:
+            logger.error(f"Error during MessageConsumer close for queue '{self.queue_name}'.", error=str(e), exc_info=True)
 
 
 @contextmanager
