@@ -254,6 +254,7 @@ class ApplicationSettings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"
 
 
 class Settings(BaseSettings):
@@ -273,6 +274,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"
 
 
 # Global settings instance

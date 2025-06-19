@@ -6,7 +6,9 @@
       "Bash(ls:*)",
       "Bash(source:*)",
       "Bash(./venv/Scripts/python.exe --version)",
-      "Bash(./venv/Scripts/python.exe -m pip install:*)"
+      "Bash(./venv/Scripts/python.exe -m pip install:*)",
+      "Bash(./venv/Scripts/python.exe -m pytest tests/unit/test_models.py -v)",
+      "Bash(./venv/Scripts/python.exe -c \"import sys; sys.path.insert(0, 'src'); from shared.config import get_settings; settings = get_settings(); print('Config loaded with monitored channels:', len(settings.app.monitored_channels))\")"
     ],
     "deny": []
   }
