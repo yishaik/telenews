@@ -22,7 +22,7 @@ class PromptManager(LoggingMixin):
     
     def __init__(self):
         """Initialize the prompt manager."""
-        self.logger.info("PromptManager initialized")
+        self.logger.info("PromptManager initialized.") # Added a period for consistency.
     
     def get_prompt(self, name: str, version: int = None) -> Optional[str]:
         """
@@ -35,9 +35,21 @@ class PromptManager(LoggingMixin):
         Returns:
             Optional[str]: Prompt template or None if not found
         """
+        self.logger.debug(
+            log_function_call("get_prompt", prompt_name=name, requested_version=version)
+        )
         db = next(get_sync_db())
         
         try:
+            self.logger.debug(
+                log_database_operation(
+                    "query",
+                    Prompt.__tablename__,
+                    name=name,
+                    version=version,
+                    is_active=version is None
+                )
+            )
             query = db.query(Prompt).filter(Prompt.name == name)
             
             if version is not None:
@@ -45,17 +57,34 @@ class PromptManager(LoggingMixin):
             else:
                 query = query.filter(Prompt.is_active == True)
             
-            prompt = query.first()
+            prompt_obj = query.first() # Renamed to avoid conflict with model name
             
-            if prompt:
-                self.logger.debug(f"Retrieved prompt: {name} v{prompt.version}")
-                return prompt.template
+            if prompt_obj:
+                self.logger.info(
+                    "Prompt retrieved successfully",
+                    prompt_name=name,
+                    prompt_version=prompt_obj.version,
+                    is_active=prompt_obj.is_active
+                )
+                return prompt_obj.template
             else:
-                self.logger.warning(f"Prompt not found: {name}")
+                self.logger.warning(
+                    "Prompt not found in database",
+                    prompt_name=name,
+                    requested_version=version
+                )
                 return None
                 
         except Exception as e:
-            self.logger.error(f"Error retrieving prompt {name}: {e}")
+            self.logger.error(
+                log_database_operation(
+                    "query_failed",
+                    Prompt.__tablename__,
+                    prompt_name=name,
+                    error=str(e)
+                ),
+                exc_info=True
+            )
             return None
         finally:
             db.close()
@@ -71,21 +100,42 @@ class PromptManager(LoggingMixin):
         Returns:
             str: Formatted prompt
         """
+        template_preview = template[:75] + "..." if len(template) > 75 else template
+        self.logger.debug(
+            log_function_call(
+                "format_prompt",
+                template_preview=template_preview,
+                available_vars=list(kwargs.keys())
+            )
+        )
         try:
-            return template.format(**kwargs)
+            formatted_prompt = template.format(**kwargs)
+            self.logger.debug("Prompt formatted successfully.")
+            return formatted_prompt
         except KeyError as e:
-            self.logger.error(f"Missing variable in prompt template: {e}")
-            raise
+            self.logger.error(
+                "Missing variable in prompt template during formatting.",
+                missing_key=str(e),
+                template_preview=template_preview,
+                available_vars=list(kwargs.keys()),
+                exc_info=True
+            )
+            raise # Re-raise as this is a critical configuration/data issue
         except Exception as e:
-            self.logger.error(f"Error formatting prompt: {e}")
-            raise
+            self.logger.error(
+                "Error formatting prompt.",
+                template_preview=template_preview,
+                error=str(e),
+                exc_info=True
+            )
+            raise # Re-raise
     
     def save_prompt(
         self, 
         name: str, 
         template: str, 
         parameters: Dict[str, Any] = None,
-        version: int = None
+        version: int = None # Explicitly allow setting a version
     ) -> bool:
         """
         Save a prompt template to the database.
@@ -93,46 +143,83 @@ class PromptManager(LoggingMixin):
         Args:
             name: Prompt template name
             template: Prompt template string
-            parameters: Additional parameters/metadata
-            version: Version number (if None, auto-increments)
+            parameters: Additional parameters/metadata for the prompt
+            version: Version number (if None, auto-increments from max existing)
             
         Returns:
             bool: True if saved successfully
         """
+        self.logger.debug(
+            log_function_call(
+                "save_prompt",
+                prompt_name=name,
+                version_provided=version,
+                has_parameters=bool(parameters)
+            )
+        )
         db = next(get_sync_db())
         
         try:
-            # Determine version number
-            if version is None:
-                max_version = db.query(Prompt).filter(
+            target_version = version
+            if target_version is None:
+                self.logger.debug(log_database_operation("query_max_version", Prompt.__tablename__, name=name))
+                max_version_obj = db.query(Prompt.version).filter(
                     Prompt.name == name
                 ).order_by(Prompt.version.desc()).first()
-                version = (max_version.version + 1) if max_version else 1
-            
-            # Deactivate previous active version
+                target_version = (max_version_obj[0] + 1) if max_version_obj else 1
+                self.logger.info(f"Auto-incrementing version for prompt '{name}' to {target_version}.")
+
+            # Deactivate previous active version(s) of this prompt if this new one is active
+            # For simplicity, assuming new prompts are always set active.
+            # A more robust system might have explicit activation.
+            self.logger.debug(
+                log_database_operation(
+                    "update_deactivate_old", Prompt.__tablename__, name=name
+                )
+            )
             db.query(Prompt).filter(
                 Prompt.name == name,
                 Prompt.is_active == True
-            ).update({"is_active": False})
+            ).update({"is_active": False}, synchronize_session=False)
             
             # Create new prompt
-            prompt = Prompt(
+            new_prompt = Prompt(
                 name=name,
-                version=version,
+                version=target_version,
                 template=template,
-                parameters=parameters or {},
-                is_active=True
+                parameters=parameters or {}, # Ensure parameters is a dict
+                is_active=True # New prompts are active by default
             )
             
-            db.add(prompt)
+            db.add(new_prompt)
             db.commit()
             
-            self.logger.info(f"Saved prompt: {name} v{version}")
+            self.logger.info(
+                log_database_operation(
+                    "insert",
+                    Prompt.__tablename__,
+                    prompt_name=name,
+                    version=target_version,
+                    is_active=True
+                )
+            )
             return True
             
         except Exception as e:
-            self.logger.error(f"Error saving prompt {name}: {e}")
-            db.rollback()
+            self.logger.error(
+                log_database_operation(
+                    "save_failed",
+                    Prompt.__tablename__,
+                    prompt_name=name,
+                    error=str(e)
+                ),
+                exc_info=True
+            )
+            try:
+                db.rollback()
+                self.logger.info("Database rollback successful after error saving prompt.", prompt_name=name)
+            except Exception as re:
+                self.logger.error("Failed to rollback database transaction for prompt save.", original_error=str(e), rollback_error=str(re))
             return False
         finally:
             db.close()
@@ -141,6 +228,7 @@ class PromptManager(LoggingMixin):
 # Initialize default prompts
 def initialize_default_prompts():
     """Initialize default prompt templates in the database."""
+    logger.info("Starting initialization of default prompts...") # Use module logger here
     prompt_manager = PromptManager()
     
     # Text Analysis Prompt
@@ -178,6 +266,7 @@ Instructions:
 - Ensure the response is valid JSON only
 """
     
+    # save_prompt method now includes logging
     prompt_manager.save_prompt(
         name="text_analysis",
         template=text_analysis_prompt,
@@ -186,6 +275,7 @@ Instructions:
             "input_variables": ["message_text"],
             "output_format": "json"
         }
+        # version=1 # Optionally set initial version
     )
     
     # Summarization Prompt
@@ -214,9 +304,10 @@ Summary:
             "input_variables": ["messages", "time_range"],
             "output_format": "text"
         }
+        # version=1 # Optionally set initial version
     )
     
-    logger.info("Default prompts initialized")
+    logger.info("Default prompts initialization process completed.")
 
 
 def get_prompt_manager() -> PromptManager:
