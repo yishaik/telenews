@@ -277,13 +277,11 @@ class Settings(BaseSettings):
 
 # Global settings instance
 _settings: Optional[Settings] = None
-    # Depending on the application's desired behavior, might re-raise or exit
-    raise
 
 
 def get_settings() -> Settings:
     """Get the global settings instance."""
-    # Settings are already loaded and logged at module scope.
-    # Could add a debug log here if frequent calls to get_settings() need to be tracked.
-    logger.debug("get_settings() called, returning pre-loaded settings instance.")
-    return settings 
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings 
