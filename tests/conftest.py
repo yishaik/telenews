@@ -3,6 +3,7 @@ Pytest configuration and shared fixtures for Tel-Insights tests.
 """
 
 import os
+from datetime import datetime, timezone
 import pytest
 from unittest.mock import Mock, MagicMock
 from sqlalchemy import create_engine
@@ -17,7 +18,7 @@ from shared.database import Base
 from shared.models import Channel, Message, Media, User, AlertConfig, Prompt
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def test_database():
     """Create a test database for the session."""
     # Use in-memory SQLite for tests
@@ -65,7 +66,7 @@ def sample_message():
         telegram_message_id=12345,
         channel_id=1001234567890,
         message_text="This is a test news message about technology.",
-        message_timestamp="2024-01-01T10:00:00+00:00",
+        message_timestamp=datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc),
         ai_metadata={
             "summary": "Test news about technology",
             "topics": ["technology", "news"],

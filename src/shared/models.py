@@ -20,7 +20,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.types import JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -113,7 +113,7 @@ class Message(Base):
         media_id: Foreign key to media table (nullable)
         message_timestamp: Original timestamp of the Telegram message
         created_at: Timestamp when message was stored in our system
-        ai_metadata: JSONB field containing AI analysis results
+        ai_metadata: JSON field containing AI analysis results
     """
     
     __tablename__ = "messages"
@@ -149,7 +149,7 @@ class Message(Base):
         comment="Timestamp when stored in our system"
     )
     ai_metadata = Column(
-        JSONB,
+        JSON,
         nullable=True,
         comment="AI analysis results in JSON format"
     )
@@ -162,7 +162,7 @@ class Message(Base):
     __table_args__ = (
         Index("idx_messages_channel_id", "channel_id"),
         Index("idx_messages_message_timestamp", "message_timestamp"),
-        Index("idx_messages_ai_metadata", "ai_metadata", postgresql_using="gin"),  # GIN index for JSONB
+        Index("idx_messages_ai_metadata", "ai_metadata", postgresql_using="gin"),  # GIN index for JSON fields (PostgreSQL)
         Index("idx_messages_telegram_id_channel", "telegram_message_id", "channel_id"),
     )
 
@@ -214,7 +214,7 @@ class AlertConfig(Base):
         id: Auto-increment primary key
         user_id: Foreign key to users table
         config_name: User-friendly name for the alert configuration
-        criteria: JSONB field containing alert criteria and parameters
+        criteria: JSON field containing alert criteria and parameters
         is_active: Boolean flag to enable/disable the alert
         created_at: Timestamp when alert config was created
     """
@@ -234,7 +234,7 @@ class AlertConfig(Base):
         comment="User-friendly name for the alert"
     )
     criteria = Column(
-        JSONB,
+        JSON,
         nullable=False,
         comment="Alert criteria and parameters in JSON format"
     )
@@ -273,7 +273,7 @@ class Prompt(Base):
         name: Unique name for the prompt template
         version: Version number of the prompt
         template: The actual prompt template text
-        parameters: JSONB field for prompt parameters and metadata
+        parameters: JSON field for prompt parameters and metadata
         is_active: Whether this version is currently active
         created_at: Timestamp when prompt was created
     """
@@ -285,7 +285,7 @@ class Prompt(Base):
     version = Column(Integer, nullable=False, default=1, comment="Prompt version number")
     template = Column(Text, nullable=False, comment="Prompt template text")
     parameters = Column(
-        JSONB,
+        JSON,
         nullable=True,
         comment="Prompt parameters and metadata"
     )
@@ -317,7 +317,7 @@ class Prompt(Base):
 
 def get_ai_metadata_schema() -> Dict[str, Any]:
     """
-    Get the expected schema for the ai_metadata JSONB field.
+    Get the expected schema for the ai_metadata JSON field.
     
     Returns:
         Dict[str, Any]: Schema definition for AI metadata
@@ -344,7 +344,7 @@ def get_ai_metadata_schema() -> Dict[str, Any]:
 
 def get_alert_criteria_schema() -> Dict[str, Any]:
     """
-    Get the expected schema for alert criteria JSONB field.
+    Get the expected schema for alert criteria JSON field.
     
     Returns:
         Dict[str, Any]: Schema definition for alert criteria
